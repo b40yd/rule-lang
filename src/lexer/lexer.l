@@ -10,6 +10,9 @@ void count_column(void);
 %option yylineno
 
 %%
+[ \t]+         { count_column(); } /* 处理空格和制表符 */
+[\n\r]+        { count_column(); } /* 处理换行符 */
+
 "global"        { count_column(); return GLOBAL; }
 "namespace"     { count_column(); return NAMESPACE; }
 "rule"          { count_column(); return RULE; }
@@ -25,9 +28,14 @@ void count_column(void);
 "range"         { count_column(); return RANGE; }
 "in"            { count_column(); return IN; }
 "while"         { count_column(); return WHILE; }
-
 "map"           { count_column(); return MAP; }
 "nil"           { count_column(); return NIL; }
+"string"        { count_column(); return STRING_TYPE; }
+"int"           { count_column(); return INT_TYPE; }
+"float"         { count_column(); return FLOAT_TYPE; }
+"array"         { count_column(); return ARRAY_TYPE; }
+"match_keyword" { count_column(); return MATCH_KEYWORD; }
+"match_keyword_value" { count_column(); return MATCH_KEYWORD_VALUE; }
 
 [a-zA-Z_][a-zA-Z0-9_]* { 
     yylval.str_val = strdup(yytext);
@@ -35,16 +43,22 @@ void count_column(void);
     return IDENTIFIER;
 }
 
-\"[^\"]*\"     { 
+\"([^\"\\]|\\.)*\"     { 
     yylval.str_val = strdup(yytext);
     count_column();
     return STRING_LITERAL;
 }
 
-'[^']*'        { 
+'([^'\\]|\\.)*'        { 
     yylval.str_val = strdup(yytext);
     count_column();
     return STRING_LITERAL;
+}
+
+[0-9]+\.[0-9]+ {
+    yylval.float_val = atof(yytext);
+    count_column();
+    return FLOAT_LITERAL;
 }
 
 [0-9]+         {
@@ -71,11 +85,11 @@ void count_column(void);
 "="            { count_column(); return '='; }
 ","            { count_column(); return ','; }
 "."            { count_column(); return '.'; }
+";"            { count_column(); return ';'; }
 "$"            { count_column(); return '$'; }
 
-#[^\n]*        { /* 忽略注释 */ }
-[ \t\n]+       { /* 忽略空白字符 */ }
-.              { /* 忽略未知字符 */ }
+#[^\n]*\n      { count_column(); } /* 处理单行注释 */
+.              { count_column(); return yytext[0]; } /* 返回未知字符以支持错误恢复 */
 
 %%
 

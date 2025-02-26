@@ -8,8 +8,8 @@ global req { # 表示定义全局req 结构体
 }
 
 namespace attack { # 表示命名空间为attack的一组规则
-    let a = nil # 表示定义局部变量
     rule SQLi {
+        let a = nil # 表示定义局部变量
         if req.headers['x-attack'] != a { # req 表示全局变量，或者内置的全局变量
             return skip # 返回skip表示结束规则
         }
@@ -17,7 +17,7 @@ namespace attack { # 表示命名空间为attack的一组规则
         return continue # 返回表示继续执行后续规则
     }
 
-    rule xxxx after SQLi { # afer 表示该规则会在SQLi 执行后执行
+    rule XSS after SQLi {
         if match_keyword('xxxx') { # match_keyword内置函数，实现时需要mock
             return skip
         }
@@ -25,11 +25,19 @@ namespace attack { # 表示命名空间为attack的一组规则
         return continue
     }
 
-    rule yyyy before xxxx after SQLi { # afer 表示该规则会在SQLi 执行后执行， 在xxxx前执行，自动排序
+    rule XXE before XSS {
         if match_keyword_value('yyyy', 'ffff') { # match_keyword_value内置函数，实现时需要mock
             return skip
         }
 
         return continue
+    }
+
+    rule CSRF after SQLi, XSS before XXE {
+        # 在 SQLi 和 XSS 之后，XXE 之前执行
+    }
+
+    rule RCE before XSS, XXE after SQLi {
+        # 在 XSS 和 XXE 之前，SQLi 之后执行
     }
 }
