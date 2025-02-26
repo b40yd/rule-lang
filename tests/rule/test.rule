@@ -1,0 +1,35 @@
+# 你可以参考golang的实现，支持基本数据类型，如int float string array map的基本实现
+# 条件语句要求支持if switch
+# for迭代器要求支持map和array
+# namespace global rule if let return continue skip after before等为关键字, 可以扩展
+
+global req { # 表示定义全局req 结构体
+    headers map[string]string # 定义一个为haders的hash表的成员变量
+}
+
+namespace attack { # 表示命名空间为attack的一组规则
+    let a = nil # 表示定义局部变量
+    rule SQLi {
+        if req.headers['x-attack'] != a { # req 表示全局变量，或者内置的全局变量
+            return skip # 返回skip表示结束规则
+        }
+
+        return continue # 返回表示继续执行后续规则
+    }
+
+    rule xxxx after SQLi { # afer 表示该规则会在SQLi 执行后执行
+        if match_keyword('xxxx') { # match_keyword内置函数，实现时需要mock
+            return skip
+        }
+
+        return continue
+    }
+
+    rule yyyy before xxxx after SQLi { # afer 表示该规则会在SQLi 执行后执行， 在xxxx前执行，自动排序
+        if match_keyword_value('yyyy', 'ffff') { # match_keyword_value内置函数，实现时需要mock
+            return skip
+        }
+
+        return continue
+    }
+}

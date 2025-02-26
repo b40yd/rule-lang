@@ -1,10 +1,24 @@
+#include <stdio.h>
 #include "parser.h"
-#include "utils.h"
 
-int main(int argc, char **argv)
-{
-    print_error("start calc:");
-    yyparse();
+extern FILE* yyin;
+
+int main(int argc, char **argv) {
+    if (argc > 1) {
+        FILE *input = fopen(argv[1], "r");
+        if (!input) {
+            fprintf(stderr, "Cannot open input file '%s'\n", argv[1]);
+            return 1;
+        }
+        yyin = input;
+    }
     
-    return 0;
+    printf("Starting parser...\n");
+    int result = yyparse();
+    
+    if (argc > 1) {
+        fclose(yyin);
+    }
+    
+    return result;
 }
