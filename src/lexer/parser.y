@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "pool.h"
 
 extern int yylex(void);
 extern int yylineno;
@@ -20,15 +21,18 @@ typedef struct symbol_entry {
 typedef struct scope_stack {
     char* scope_name;
     struct scope_stack* prev;
+    memory_pool_t* pool;  // 每个作用域有自己的内存池
 } scope_stack_t;
 
 static symbol_entry_t* symbol_table = NULL;
 static scope_stack_t* current_scope = NULL;
+memory_pool_t* global_pool = NULL;
 
 void push_scope(const char* scope_name);
 void pop_scope(void);
 void add_symbol(const char* name, const char* type);
 symbol_entry_t* find_symbol(const char* name);
+
 %}
 
 %union {
@@ -459,9 +463,10 @@ void yyerror(const char *s) {
 }
 
 void push_scope(const char* scope_name) {
-    scope_stack_t* new_scope = malloc(sizeof(scope_stack_t));
-    new_scope->scope_name = strdup(scope_name);
+    scope_stack_t* new_scope = palloc(global_pool, sizeof(scope_stack_t));
+    new_scope->scope_name = pstrdup(global_pool, scope_name);
     new_scope->prev = current_scope;
+    new_scope->pool = create_pool(POOL_SIZE);
     current_scope = new_scope;
 }
 
@@ -469,16 +474,17 @@ void pop_scope(void) {
     if (current_scope) {
         scope_stack_t* old_scope = current_scope;
         current_scope = current_scope->prev;
-        free(old_scope->scope_name);
-        free(old_scope);
+        destroy_pool(old_scope->pool);
+        // 注意：不需要释放 old_scope，因为它是在 global_pool 中分配的
     }
 }
 
 void add_symbol(const char* name, const char* type) {
-    symbol_entry_t* new_symbol = malloc(sizeof(symbol_entry_t));
-    new_symbol->name = strdup(name);
-    new_symbol->type = strdup(type);
-    new_symbol->scope = current_scope ? strdup(current_scope->scope_name) : strdup("global");
+    memory_pool_t* pool = current_scope ? current_scope->pool : global_pool;
+    symbol_entry_t* new_symbol = palloc(pool, sizeof(symbol_entry_t));
+    new_symbol->name = pstrdup(pool, name);
+    new_symbol->type = pstrdup(pool, type);
+    new_symbol->scope = current_scope ? pstrdup(pool, current_scope->scope_name) : pstrdup(pool, "global");
     new_symbol->next = symbol_table;
     symbol_table = new_symbol;
 }
@@ -509,3 +515,5 @@ symbol_entry_t* find_symbol(const char* name) {
     
     return NULL;
 }
+
+int yyparse(void);

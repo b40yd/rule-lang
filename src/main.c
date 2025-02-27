@@ -1,8 +1,16 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
 #include "parser.h"
+#include "pool.h"
+
+// 内存池结构声明
+typedef struct memory_pool memory_pool_t;
 
 extern FILE* yyin;
 extern int yylineno;
+extern memory_pool_t* global_pool;
 
 int main(int argc, char **argv) {
     if (argc > 1) {
@@ -20,6 +28,13 @@ int main(int argc, char **argv) {
     printf("Starting parser...\n");
     printf("===================\n");
     
+    // 创建全局内存池
+    global_pool = create_pool(POOL_SIZE);
+    if (!global_pool) {
+        fprintf(stderr, "Failed to create global memory pool\n");
+        return 1;
+    }
+    
     yylineno = 1;  // 重置行号
     int result = yyparse();
     
@@ -34,5 +49,7 @@ int main(int argc, char **argv) {
         fclose(yyin);
     }
     
+    // 清理所有内存
+    destroy_pool(global_pool);
     return result;
 }

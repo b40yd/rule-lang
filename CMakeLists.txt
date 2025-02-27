@@ -49,6 +49,7 @@ target_include_directories(parserlib PUBLIC
 # 主可执行文件
 add_executable(rulec 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pool.c
 )
 
 # 关键修复4：链接静态库到可执行文件

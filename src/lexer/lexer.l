@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "parser.h"
+#include "pool.h"
 
 void count_column(void);
 %}

@@ -1,18 +1,22 @@
 namespace test {
-    // 简单的 for 循环
-    for x in items {
-        value = "processing";
-    }
-
-    // 范围循环
-    for i range numbers {
-        if (i > 10) {
-            status = "greater";
+    rule test {
+        # 简单的 for 循环
+        let value = ""
+        let status = ""
+        for x in items {
+            value = "processing";
         }
-    }
 
-    // while 循环
-    while (count <= 5) {
-        value = "counting";
+        # 范围循环
+        for i range numbers {
+            if (i > 10) {
+                status = "greater";
+            }
+        }
+
+        # while 循环
+        while (count <= 5) {
+            value = "counting";
+        }
     }
 } 
