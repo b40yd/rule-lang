@@ -1,25 +1,31 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
-#include <stddef.h>
+#include "ast.h"
 #include "parser.h"
-#include "pool.h"
-
-// 内存池结构声明
-typedef struct memory_pool memory_pool_t;
 
 extern FILE* yyin;
 extern int yylineno;
-extern memory_pool_t* global_pool;
+extern int yyparse(parser_context_t* ctx);
 
 int main(int argc, char **argv) {
+    // 创建解析器上下文
+    parser_context_t* ctx = create_parser_context();
+    if (!ctx) {
+        fprintf(stderr, "Failed to create parser context\n");
+        return 1;
+    }
+
+    // 设置输入文件
     if (argc > 1) {
         FILE *input = fopen(argv[1], "r");
         if (!input) {
             fprintf(stderr, "Cannot open input file '%s'\n", argv[1]);
+            destroy_parser_context(ctx);
             return 1;
         }
         yyin = input;
+        ctx->current_file = argv[1];
         printf("Parsing file: %s\n", argv[1]);
     } else {
         printf("Reading from standard input...\n");
@@ -28,28 +34,27 @@ int main(int argc, char **argv) {
     printf("Starting parser...\n");
     printf("===================\n");
     
-    // 创建全局内存池
-    global_pool = create_pool(POOL_SIZE);
-    if (!global_pool) {
-        fprintf(stderr, "Failed to create global memory pool\n");
-        return 1;
-    }
-    
-    yylineno = 1;  // 重置行号
-    int result = yyparse();
+    // 重置行号并开始解析
+    yylineno = 1;
+    int result = yyparse(ctx);
     
     printf("===================\n");
-    if (result == 0) {
+    if (result == 0 && ctx->error_count == 0) {
         printf("Parsing completed successfully.\n");
+        // 打印AST
+        if (ctx->root) {
+            printf("\nAbstract Syntax Tree:\n");
+            print_ast(ctx->root, 0);
+        }
     } else {
-        printf("Parsing failed with errors.\n");
+        printf("Parsing failed with %d errors.\n", ctx->error_count);
     }
     
+    // 清理资源
     if (argc > 1) {
         fclose(yyin);
     }
+    destroy_parser_context(ctx);
     
-    // 清理所有内存
-    destroy_pool(global_pool);
     return result;
 }

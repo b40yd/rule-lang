@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(BISON 2.3 REQUIRED)
 find_package(FLEX 2.6 REQUIRED)
 
-# 关键修复1：添加头文件搜索路径（包括项目include目录和生成目录）
+# 添加头文件搜索路径
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include   # 项目自定义头文件目录
     ${CMAKE_CURRENT_BINARY_DIR}           # 生成的parser.h所在目录
@@ -20,7 +20,6 @@ BISON_TARGET(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lexer/parser.y
     ${CMAKE_CURRENT_BINARY_DIR}/parser.c
     DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/parser.h
-    COMPILE_FLAGS "-Wno-conflicts-sr -Wno-conflicts-rr" 
 )
 
 # 生成词法分析器代码
@@ -34,13 +33,15 @@ FLEX_TARGET(
 # 添加 Bison 和 Flex 的依赖关系
 ADD_FLEX_BISON_DEPENDENCY(rule_lexer rule_parser)
 
-# 关键修复2：创建静态库（包含生成的词法/语法分析器代码）
+# 创建解析器库
 add_library(parserlib STATIC
-    ${FLEX_rule_lexer_OUTPUTS}
     ${BISON_rule_parser_OUTPUTS}
+    ${FLEX_rule_lexer_OUTPUTS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ast.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pool.c
 )
 
-# 关键修复3：为所有目标添加头文件目录
+# 为解析器库添加头文件目录
 target_include_directories(parserlib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -49,10 +50,9 @@ target_include_directories(parserlib PUBLIC
 # 主可执行文件
 add_executable(rulec 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/pool.c
 )
 
-# 关键修复4：链接静态库到可执行文件
+# 链接静态库到可执行文件
 target_link_libraries(rulec parserlib)
 
 # 测试可执行文件

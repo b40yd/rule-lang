@@ -2,47 +2,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "ast.h"
 #include "pool.h"
 
 extern int yylex(void);
 extern int yylineno;
 extern char* yytext;
-void yyerror(const char *s);
 
-// 符号表结构
-typedef struct symbol_entry {
-    char* name;
-    char* type;
-    char* scope;
-    struct symbol_entry* next;
-} symbol_entry_t;
+void yyerror(parser_context_t* ctx, const char* s) {
+    fprintf(stderr, "Error at line %d: %s near '%s'\n", yylineno, s, yytext);
+}
 
-// 作用域结构
-typedef struct scope_stack {
-    char* scope_name;
-    struct scope_stack* prev;
-    memory_pool_t* pool;  // 每个作用域有自己的内存池
-} scope_stack_t;
-
-static symbol_entry_t* symbol_table = NULL;
-static scope_stack_t* current_scope = NULL;
-memory_pool_t* global_pool = NULL;
-
-void push_scope(const char* scope_name);
-void pop_scope(void);
-void add_symbol(const char* name, const char* type);
-symbol_entry_t* find_symbol(const char* name);
+int yyparse(parser_context_t* ctx);
 
 %}
+
+%parse-param { parser_context_t* ctx }
 
 %union {
     int int_val;
     double float_val;
     char* str_val;
-    struct {
-        char* value;
-        char* type;
-    } expr_val;
+    ast_node_t* node;
+    ast_list_t* list;
+    operator_type_t op;
 }
 
 %token <str_val> IDENTIFIER STRING_LITERAL
@@ -54,10 +37,16 @@ symbol_entry_t* find_symbol(const char* name);
 %token EQ NE GE LE GT LT AND OR
 %token MATCH_KEYWORD MATCH_KEYWORD_VALUE
 
-%type <expr_val> expression array_literal map_access comparison_expression function_call primary_expression
+%type <node> program global_section namespace_section rule_declaration namespace_item
+%type <node> struct_member expression primary_expression
+%type <node> let_statement if_statement for_statement while_statement
+%type <node> return_statement assignment_statement function_call
+%type <node> comparison_expression map_access array_literal rule_statement
+%type <list> namespace_sections namespace_items_list rule_statements namespace_items
+%type <list> struct_members array_items identifier_list
 %type <str_val> rule_name type_spec basic_type map_type array_type
+%type <op> comparison_operator
 
-// 定义运算符优先级和结合性
 %left OR
 %left AND
 %left EQ NE
@@ -65,39 +54,57 @@ symbol_entry_t* find_symbol(const char* name);
 %left '+' '-'
 %left '*' '/'
 %nonassoc UMINUS
-%left '.' '['       // 成员访问和数组访问具有相同的优先级
+%left '.' '['
 %nonassoc ')'
 
 %%
 
 program
     : global_section namespace_sections
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_PROGRAM);
+        node->data.program.global = $1;
+        node->data.program.namespaces = $2;
+        ctx->root = node;
+        $$ = node;
+    }
     ;
 
 global_section
     : GLOBAL IDENTIFIER '{' struct_members '}'
     {
-        add_symbol($2, "struct");
-        printf("Global struct declared: %s\n", $2);
-        free($2);
+        ast_node_t* node = create_ast_node(ctx, AST_GLOBAL);
+        node->data.global.name = $2;
+        node->data.global.members = $4;
+        $$ = node;
+        add_symbol(ctx, $2, "struct");
     }
     | /* empty */
+    {
+        $$ = NULL;
+    }
     ;
 
 struct_members
     : struct_members struct_member
+    {
+        $$ = $1;
+        append_ast_list(ctx, $$, $2);
+    }
     | struct_member
+    {
+        $$ = create_ast_list(ctx, $1);
+    }
     ;
 
 struct_member
     : IDENTIFIER type_spec
     {
-        char type_buf[256];
-        snprintf(type_buf, sizeof(type_buf), "struct_member:%s", $2);
-        add_symbol($1, type_buf);
-        printf("Struct member declared: %s of type %s\n", $1, $2);
-        free($1);
-        free($2);
+        ast_node_t* node = create_ast_node(ctx, AST_STRUCT_MEMBER);
+        node->data.struct_member.name = $1;
+        node->data.struct_member.type = $2;
+        $$ = node;
+        add_symbol(ctx, $1, $2);
     }
     ;
 
@@ -136,66 +143,107 @@ array_type
 
 namespace_sections
     : namespace_sections namespace_section
+    {
+        $$ = $1;
+        append_ast_list(ctx, $$, $2);
+    }
     | namespace_section
+    {
+        $$ = create_ast_list(ctx, $1);
+    }
     | /* empty */
+    {
+        $$ = NULL;
+    }
     ;
 
 namespace_section
     : NAMESPACE IDENTIFIER '{'
     {
-        char scope_name[256];
-        snprintf(scope_name, sizeof(scope_name), "namespace:%s", $2);
-        push_scope(scope_name);
-        add_symbol($2, "namespace");
-        printf("Entering namespace: %s\n", $2);
+        scope_t* scope = create_scope(ctx, $2);
+        push_scope(ctx, scope);
     }
-    namespace_items_list
-    '}'
+    namespace_items_list '}'
     {
-        pop_scope();
-        printf("Exiting namespace: %s\n", $2);
-        free($2);
+        ast_node_t* node = create_ast_node(ctx, AST_NAMESPACE);
+        node->data.namespace.name = $2;
+        node->data.namespace.rules = $5;
+        $$ = node;
+        pop_scope(ctx);
     }
     ;
 
 namespace_items_list
-    : /* empty */
-    | namespace_items
+    : namespace_items
+    {
+        $$ = $1;
+    }
+    | /* empty */
+    {
+        $$ = NULL;
+    }
     ;
 
 namespace_items
     : namespace_items namespace_item
+    {
+        $$ = $1;
+        if ($2) {
+            append_ast_list(ctx, $$, $2);
+        }
+    }
     | namespace_item
+    {
+        if ($1) {
+            $$ = create_ast_list(ctx, $1);
+        } else {
+            $$ = NULL;
+        }
+    }
     ;
 
 namespace_item
     : rule_declaration
+    {
+        $$ = $1;
+    }
     | error ';'  /* 错误恢复 */
-    ;
-
-rule_body
-    : rule_statements_list
-    ;
-
-rule_statements_list
-    : /* empty */
-    | rule_statements
+    {
+        $$ = NULL;
+    }
     ;
 
 rule_statements
     : rule_statements rule_statement
+    {
+        $$ = $1;
+        if ($2) {
+            append_ast_list(ctx, $$, $2);
+        }
+    }
     | rule_statement
+    {
+        if ($1) {
+            $$ = create_ast_list(ctx, $1);
+        } else {
+            $$ = NULL;
+        }
+    }
+    | /* empty */
+    {
+        $$ = NULL;
+    }
     ;
 
 rule_statement
-    : let_statement optional_semicolon
-    | if_statement
-    | return_statement optional_semicolon
-    | for_statement
-    | while_statement
-    | assignment_statement optional_semicolon
-    | function_call optional_semicolon
-    | error optional_semicolon  /* 错误恢复 */
+    : let_statement optional_semicolon { $$ = $1; }
+    | if_statement { $$ = $1; }
+    | return_statement optional_semicolon { $$ = $1; }
+    | for_statement { $$ = $1; }
+    | while_statement { $$ = $1; }
+    | assignment_statement optional_semicolon { $$ = $1; }
+    | function_call optional_semicolon { $$ = $1; }
+    | error optional_semicolon { $$ = NULL; }
     ;
 
 optional_semicolon
@@ -206,105 +254,150 @@ optional_semicolon
 let_statement
     : LET IDENTIFIER '=' expression
     {
-        add_symbol($2, "local");
-        printf("Local variable declared: %s\n", $2);
-        free($2);
+        ast_node_t* node = create_ast_node(ctx, AST_LET_STMT);
+        node->data.let_stmt.name = $2;
+        node->data.let_stmt.init = $4;
+        $$ = node;
+        add_symbol(ctx, $2, "local");
     }
     ;
 
 assignment_statement
     : primary_expression '=' expression
     {
-        if ($1.type && strcmp($1.type, "identifier") == 0) {
-            if (!find_symbol($1.value)) {
-                printf("Warning: Assignment to undeclared variable %s\n", $1.value);
-                add_symbol($1.value, "local");
+        ast_node_t* node = create_ast_node(ctx, AST_ASSIGN_STMT);
+        node->data.assign_stmt.target = $1;
+        node->data.assign_stmt.value = $3;
+        $$ = node;
+        
+        if ($1->type == AST_IDENTIFIER) {
+            if (!find_symbol(ctx, $1->data.identifier.name)) {
+                printf("Warning: Assignment to undeclared variable %s\n", 
+                       $1->data.identifier.name);
+                add_symbol(ctx, $1->data.identifier.name, "local");
             }
         }
-        free($1.type);
-        free($1.value);
     }
     ;
 
 primary_expression
     : IDENTIFIER
     {
-        $$.type = strdup("identifier");
-        $$.value = $1;
+        $$ = create_identifier_node(ctx, $1);
+        free($1);
     }
     | map_access
+    {
+        $$ = $1;
+    }
     ;
 
 if_statement
     : IF expression '{' rule_statements '}'
-    | IF '(' expression ')' '{' rule_statements '}'
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_IF_STMT);
+        node->data.if_stmt.condition = $2;
+        node->data.if_stmt.then_body = $4;
+        node->data.if_stmt.else_body = NULL;
+        $$ = node;
+    }
     ;
 
 return_statement
     : RETURN CONTINUE
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_RETURN_STMT);
+        node->data.return_stmt.type = RETURN_CONTINUE;
+        $$ = node;
+    }
     | RETURN SKIP
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_RETURN_STMT);
+        node->data.return_stmt.type = RETURN_SKIP;
+        $$ = node;
+    }
     | RETURN BLOCK
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_RETURN_STMT);
+        node->data.return_stmt.type = RETURN_BLOCK;
+        $$ = node;
+    }
     ;
 
 for_statement
     : FOR IDENTIFIER IN expression '{' rule_statements '}'
     {
-        add_symbol($2, "iterator");
-        free($2);
+        ast_node_t* node = create_ast_node(ctx, AST_FOR_STMT);
+        node->data.for_stmt.iterator = $2;
+        node->data.for_stmt.range = $4;
+        node->data.for_stmt.body = $6;
+        $$ = node;
+        add_symbol(ctx, $2, "iterator");
     }
     | FOR IDENTIFIER RANGE expression '{' rule_statements '}'
     {
-        add_symbol($2, "iterator");
-        free($2);
+        ast_node_t* node = create_ast_node(ctx, AST_FOR_STMT);
+        node->data.for_stmt.iterator = $2;
+        node->data.for_stmt.range = $4;
+        node->data.for_stmt.body = $6;
+        $$ = node;
+        add_symbol(ctx, $2, "iterator");
     }
     ;
 
 while_statement
-    : WHILE '(' expression ')' '{' rule_statements '}'
+    : WHILE expression '{' rule_statements '}'
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_WHILE_STMT);
+        node->data.while_stmt.condition = $2;
+        node->data.while_stmt.body = $4;
+        $$ = node;
+    }
     ;
 
 function_call
     : MATCH_KEYWORD '(' expression ')'
     {
-        $$.type = strdup("bool");
-        $$.value = strdup("match_result");
+        ast_node_t* node = create_ast_node(ctx, AST_FUNC_CALL);
+        node->data.func_call.name = strdup("match_keyword");
+        node->data.func_call.args = create_ast_list(ctx, $3);
+        $$ = node;
     }
     | MATCH_KEYWORD_VALUE '(' expression ',' expression ')'
     {
-        $$.type = strdup("bool");
-        $$.value = strdup("match_value_result");
+        ast_node_t* node = create_ast_node(ctx, AST_FUNC_CALL);
+        node->data.func_call.name = strdup("match_keyword_value");
+        ast_list_t* args = create_ast_list(ctx, $3);
+        append_ast_list(ctx, args, $5);
+        node->data.func_call.args = args;
+        $$ = node;
     }
     ;
 
 expression
-    : primary_expression
+    : primary_expression { $$ = $1; }
     | STRING_LITERAL
     {
-        $$.type = strdup("string");
-        $$.value = $1;
+        $$ = create_string_literal_node(ctx, $1);
+        free($1);
     }
     | INTEGER_LITERAL
     {
-        $$.type = strdup("int");
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%d", $1);
-        $$.value = strdup(buf);
+        $$ = create_integer_literal_node(ctx, $1);
     }
     | FLOAT_LITERAL
     {
-        $$.type = strdup("float");
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%f", $1);
-        $$.value = strdup(buf);
+        $$ = create_float_literal_node(ctx, $1);
     }
     | NIL
     {
-        $$.type = strdup("nil");
-        $$.value = strdup("nil");
+        ast_node_t* node = create_ast_node(ctx, AST_IDENTIFIER);
+        node->data.identifier.name = strdup("nil");
+        $$ = node;
     }
-    | array_literal
-    | comparison_expression
-    | function_call
+    | array_literal { $$ = $1; }
+    | comparison_expression { $$ = $1; }
+    | function_call { $$ = $1; }
     | '(' expression ')'
     {
         $$ = $2;
@@ -314,95 +407,80 @@ expression
 array_literal
     : '[' array_items ']'
     {
-        $$.type = strdup("array");
-        $$.value = strdup("array_value");
+        ast_node_t* node = create_ast_node(ctx, AST_ARRAY_LITERAL);
+        node->data.array_literal.items = $2;
+        $$ = node;
     }
     ;
 
 array_items
     : array_items ',' expression
+    {
+        $$ = $1;
+        append_ast_list(ctx, $$, $3);
+    }
     | expression
+    {
+        $$ = create_ast_list(ctx, $1);
+    }
     | /* empty */
+    {
+        $$ = NULL;
+    }
     ;
 
 map_access
     : primary_expression '[' expression ']'
     {
-        $$.type = strdup("map_element");
-        $$.value = $1.value;
-        free($1.type);
+        ast_node_t* node = create_ast_node(ctx, AST_MAP_ACCESS);
+        node->data.map_access.target = $1;
+        node->data.map_access.key = $3;
+        $$ = node;
     }
     | primary_expression '.' IDENTIFIER
     {
-        $$.type = strdup("struct_member");
-        char* member_access = malloc(strlen($1.value) + strlen($3) + 2);
-        sprintf(member_access, "%s.%s", $1.value, $3);
-        $$.value = member_access;
-        free($1.type);
-        free($1.value);
-        free($3);
+        ast_node_t* node = create_ast_node(ctx, AST_MEMBER_ACCESS);
+        node->data.member_access.target = $1;
+        node->data.member_access.member = $3;
+        $$ = node;
     }
     ;
 
+comparison_operator
+    : EQ { $$ = OP_EQ; }
+    | NE { $$ = OP_NE; }
+    | GT { $$ = OP_GT; }
+    | LT { $$ = OP_LT; }
+    | GE { $$ = OP_GE; }
+    | LE { $$ = OP_LE; }
+    | AND { $$ = OP_AND; }
+    | OR { $$ = OP_OR; }
+    ;
+
 comparison_expression
-    : expression EQ expression
+    : expression comparison_operator expression
     {
-        $$.type = strdup("bool");
-        $$.value = strdup("eq_result");
-    }
-    | expression NE expression
-    {
-        $$.type = strdup("bool");
-        $$.value = strdup("ne_result");
-    }
-    | expression GT expression
-    {
-        $$.type = strdup("bool");
-        $$.value = strdup("gt_result");
-    }
-    | expression LT expression
-    {
-        $$.type = strdup("bool");
-        $$.value = strdup("lt_result");
-    }
-    | expression GE expression
-    {
-        $$.type = strdup("bool");
-        $$.value = strdup("ge_result");
-    }
-    | expression LE expression
-    {
-        $$.type = strdup("bool");
-        $$.value = strdup("le_result");
-    }
-    | expression AND expression
-    {
-        $$.type = strdup("bool");
-        $$.value = strdup("and_result");
-    }
-    | expression OR expression
-    {
-        $$.type = strdup("bool");
-        $$.value = strdup("or_result");
+        $$ = create_binary_expr_node(ctx, $2, $1, $3);
     }
     ;
 
 rule_declaration
-    : RULE rule_name rule_modifiers '{' rule_body '}'
+    : RULE rule_name rule_modifiers '{' rule_statements '}'
     {
-        pop_scope();
-        printf("Rule declared: %s\n", $2);
-        free($2);
+        ast_node_t* node = create_ast_node(ctx, AST_RULE);
+        node->data.rule.name = $2;
+        node->data.rule.body = $5;
+        $$ = node;
+        pop_scope(ctx);
     }
     ;
 
 rule_name
     : IDENTIFIER
     {
-        char scope_name[256];
-        snprintf(scope_name, sizeof(scope_name), "rule:%s", $1);
-        push_scope(scope_name);
-        add_symbol($1, "rule");
+        scope_t* scope = create_scope(ctx, $1);
+        push_scope(ctx, scope);
+        add_symbol(ctx, $1, "rule");
         $$ = $1;
     }
     ;
@@ -430,90 +508,18 @@ before_modifiers
 identifier_list
     : IDENTIFIER
     {
-        add_symbol($1, "rule_dependency");
-        free($1);
+        ast_list_t* list = create_ast_list(ctx, create_identifier_node(ctx, $1));
+        $$ = list;
+        add_symbol(ctx, $1, "rule_dependency");
     }
     | identifier_list ',' IDENTIFIER
     {
-        add_symbol($3, "rule_dependency");
-        free($3);
+        $$ = $1;
+        append_ast_list(ctx, $$, create_identifier_node(ctx, $3));
+        add_symbol(ctx, $3, "rule_dependency");
     }
     ;
 
 %%
 
-void yyerror(const char *s) {
-    fprintf(stderr, "Error at line %d: %s\n", yylineno, s);
-    if (yytext[0] != '\0') {
-        fprintf(stderr, "Near token: %s\n", yytext);
-    }
-    if (current_scope) {
-        fprintf(stderr, "In scope: %s\n", current_scope->scope_name);
-        
-        // 添加更多上下文信息
-        symbol_entry_t* current = symbol_table;
-        fprintf(stderr, "Current scope symbols:\n");
-        while (current) {
-            if (strcmp(current->scope, current_scope->scope_name) == 0) {
-                fprintf(stderr, "  %s (%s)\n", current->name, current->type);
-            }
-            current = current->next;
-        }
-    }
-}
-
-void push_scope(const char* scope_name) {
-    scope_stack_t* new_scope = palloc(global_pool, sizeof(scope_stack_t));
-    new_scope->scope_name = pstrdup(global_pool, scope_name);
-    new_scope->prev = current_scope;
-    new_scope->pool = create_pool(POOL_SIZE);
-    current_scope = new_scope;
-}
-
-void pop_scope(void) {
-    if (current_scope) {
-        scope_stack_t* old_scope = current_scope;
-        current_scope = current_scope->prev;
-        destroy_pool(old_scope->pool);
-        // 注意：不需要释放 old_scope，因为它是在 global_pool 中分配的
-    }
-}
-
-void add_symbol(const char* name, const char* type) {
-    memory_pool_t* pool = current_scope ? current_scope->pool : global_pool;
-    symbol_entry_t* new_symbol = palloc(pool, sizeof(symbol_entry_t));
-    new_symbol->name = pstrdup(pool, name);
-    new_symbol->type = pstrdup(pool, type);
-    new_symbol->scope = current_scope ? pstrdup(pool, current_scope->scope_name) : pstrdup(pool, "global");
-    new_symbol->next = symbol_table;
-    symbol_table = new_symbol;
-}
-
-symbol_entry_t* find_symbol(const char* name) {
-    symbol_entry_t* current = symbol_table;
-    scope_stack_t* scope = current_scope;
-    
-    // 首先在当前作用域查找
-    while (current) {
-        if (strcmp(current->name, name) == 0 &&
-            current_scope &&
-            strcmp(current->scope, current_scope->scope_name) == 0) {
-            return current;
-        }
-        current = current->next;
-    }
-    
-    // 然后在全局作用域查找
-    current = symbol_table;
-    while (current) {
-        if (strcmp(current->name, name) == 0 &&
-            strcmp(current->scope, "global") == 0) {
-            return current;
-        }
-        current = current->next;
-    }
-    
-    return NULL;
-}
-
-int yyparse(void);
+int yyparse(parser_context_t* ctx);

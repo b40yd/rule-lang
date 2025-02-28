@@ -1,8 +1,8 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
+#include "ast.h"
 #include "parser.h"
-#include "pool.h"
 
 void count_column(void);
 %}
@@ -97,8 +97,7 @@ void count_column(void);
 int current_column = 0;
 
 void count_column(void) {
-    int i;
-    for (i = 0; yytext[i] != '\0'; i++) {
+    for (int i = 0; yytext[i] != '\0'; i++) {
         if (yytext[i] == '\n')
             current_column = 0;
         else if (yytext[i] == '\t')
