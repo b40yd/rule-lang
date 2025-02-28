@@ -31,31 +31,36 @@ int yyparse(parser_context_t* ctx);
 %token <str_val> IDENTIFIER STRING_LITERAL
 %token <int_val> INTEGER_LITERAL
 %token <float_val> FLOAT_LITERAL
-%token GLOBAL NAMESPACE RULE IF LET RETURN CONTINUE SKIP BLOCK
-%token AFTER BEFORE FOR RANGE IN MAP NIL WHILE
+%token GLOBAL NAMESPACE RULE IF ELSE LET RETURN CONTINUE SKIP BLOCK
+%token AFTER BEFORE FOR RANGE IN MAP NIL WHILE THEN
 %token STRING_TYPE INT_TYPE FLOAT_TYPE ARRAY_TYPE
-%token EQ NE GE LE GT LT AND OR
+%token EQ NE GE LE GT LT AND OR NOT BAND BOR BXOR LSHIFT RSHIFT
 %token MATCH_KEYWORD MATCH_KEYWORD_VALUE
 
 %type <node> program global_section namespace_section rule_declaration namespace_item
-%type <node> struct_member expression primary_expression
+%type <node> struct_member expression primary_expression unary_expression
 %type <node> let_statement if_statement for_statement while_statement
 %type <node> return_statement assignment_statement function_call
-%type <node> comparison_expression map_access array_literal rule_statement
+%type <node> array_literal rule_statement
 %type <list> namespace_sections namespace_items_list rule_statements namespace_items
 %type <list> struct_members array_items identifier_list
 %type <str_val> rule_name type_spec basic_type map_type array_type
 %type <op> comparison_operator
 
+%right '='
 %left OR
 %left AND
+%left BOR
+%left BXOR
+%left BAND
 %left EQ NE
 %left GT LT GE LE
+%left LSHIFT RSHIFT
 %left '+' '-'
-%left '*' '/'
-%nonassoc UMINUS
-%left '.' '['
-%nonassoc ')'
+%left '*' '/' '%'
+%right UMINUS NOT
+%left '.' '[' ']'
+%left '('
 
 %%
 
@@ -286,19 +291,140 @@ primary_expression
         $$ = create_identifier_node(ctx, $1);
         free($1);
     }
-    | map_access
+    | STRING_LITERAL
+    {
+        $$ = create_string_literal_node(ctx, $1);
+        free($1);
+    }
+    | INTEGER_LITERAL
+    {
+        $$ = create_integer_literal_node(ctx, $1);
+    }
+    | FLOAT_LITERAL
+    {
+        $$ = create_float_literal_node(ctx, $1);
+    }
+    | NIL
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_IDENTIFIER);
+        node->data.identifier.name = strdup("nil");
+        $$ = node;
+    }
+    | array_literal
     {
         $$ = $1;
+    }
+    | function_call
+    {
+        $$ = $1;
+    }
+    | '(' expression ')'
+    {
+        $$ = $2;
+    }
+    ;
+
+unary_expression
+    : primary_expression
+    {
+        $$ = $1;
+    }
+    | '-' unary_expression %prec UMINUS
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_UNARY_EXPR);
+        node->data.unary_expr.op = OP_MINUS;
+        node->data.unary_expr.operand = $2;
+        $$ = node;
+    }
+    | NOT unary_expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_UNARY_EXPR);
+        node->data.unary_expr.op = OP_NOT;
+        node->data.unary_expr.operand = $2;
+        $$ = node;
+    }
+    ;
+
+expression
+    : unary_expression
+    {
+        $$ = $1;
+    }
+    | expression '.' IDENTIFIER
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_MEMBER_ACCESS);
+        node->data.member_access.target = $1;
+        node->data.member_access.member = $3;
+        $$ = node;
+    }
+    | expression '[' expression ']'
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_MAP_ACCESS);
+        node->data.map_access.target = $1;
+        node->data.map_access.key = $3;
+        $$ = node;
+    }
+    | expression '+' expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_ADD, $1, $3);
+    }
+    | expression '-' expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_SUB, $1, $3);
+    }
+    | expression '*' expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_MUL, $1, $3);
+    }
+    | expression '/' expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_DIV, $1, $3);
+    }
+    | expression '%' expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_MOD, $1, $3);
+    }
+    | expression BAND expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_BAND, $1, $3);
+    }
+    | expression BOR expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_BOR, $1, $3);
+    }
+    | expression BXOR expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_BXOR, $1, $3);
+    }
+    | expression LSHIFT expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_LSHIFT, $1, $3);
+    }
+    | expression RSHIFT expression
+    {
+        $$ = create_binary_expr_node(ctx, OP_RSHIFT, $1, $3);
+    }
+    | expression comparison_operator expression
+    {
+        $$ = create_binary_expr_node(ctx, $2, $1, $3);
     }
     ;
 
 if_statement
-    : IF expression '{' rule_statements '}'
+    : IF expression '{' rule_statements '}' %prec THEN
     {
         ast_node_t* node = create_ast_node(ctx, AST_IF_STMT);
         node->data.if_stmt.condition = $2;
         node->data.if_stmt.then_body = $4;
         node->data.if_stmt.else_body = NULL;
+        $$ = node;
+    }
+    | IF expression '{' rule_statements '}' ELSE '{' rule_statements '}'
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_IF_STMT);
+        node->data.if_stmt.condition = $2;
+        node->data.if_stmt.then_body = $4;
+        node->data.if_stmt.else_body = $8;
         $$ = node;
     }
     ;
@@ -374,36 +500,6 @@ function_call
     }
     ;
 
-expression
-    : primary_expression { $$ = $1; }
-    | STRING_LITERAL
-    {
-        $$ = create_string_literal_node(ctx, $1);
-        free($1);
-    }
-    | INTEGER_LITERAL
-    {
-        $$ = create_integer_literal_node(ctx, $1);
-    }
-    | FLOAT_LITERAL
-    {
-        $$ = create_float_literal_node(ctx, $1);
-    }
-    | NIL
-    {
-        ast_node_t* node = create_ast_node(ctx, AST_IDENTIFIER);
-        node->data.identifier.name = strdup("nil");
-        $$ = node;
-    }
-    | array_literal { $$ = $1; }
-    | comparison_expression { $$ = $1; }
-    | function_call { $$ = $1; }
-    | '(' expression ')'
-    {
-        $$ = $2;
-    }
-    ;
-
 array_literal
     : '[' array_items ']'
     {
@@ -429,23 +525,6 @@ array_items
     }
     ;
 
-map_access
-    : primary_expression '[' expression ']'
-    {
-        ast_node_t* node = create_ast_node(ctx, AST_MAP_ACCESS);
-        node->data.map_access.target = $1;
-        node->data.map_access.key = $3;
-        $$ = node;
-    }
-    | primary_expression '.' IDENTIFIER
-    {
-        ast_node_t* node = create_ast_node(ctx, AST_MEMBER_ACCESS);
-        node->data.member_access.target = $1;
-        node->data.member_access.member = $3;
-        $$ = node;
-    }
-    ;
-
 comparison_operator
     : EQ { $$ = OP_EQ; }
     | NE { $$ = OP_NE; }
@@ -455,13 +534,6 @@ comparison_operator
     | LE { $$ = OP_LE; }
     | AND { $$ = OP_AND; }
     | OR { $$ = OP_OR; }
-    ;
-
-comparison_expression
-    : expression comparison_operator expression
-    {
-        $$ = create_binary_expr_node(ctx, $2, $1, $3);
-    }
     ;
 
 rule_declaration

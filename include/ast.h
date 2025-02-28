@@ -12,7 +12,19 @@ typedef enum {
     OP_GE,  // >=
     OP_LE,  // <=
     OP_AND, // &&
-    OP_OR   // ||
+    OP_OR,   // ||
+    OP_MINUS, // -
+    OP_ADD,  // +
+    OP_SUB,  // -
+    OP_MUL,  // *
+    OP_DIV,  // /
+    OP_MOD,  // %
+    OP_NOT,  // !
+    OP_BAND, // &
+    OP_BOR,  // |
+    OP_BXOR, // ^
+    OP_LSHIFT, // <<
+    OP_RSHIFT  // >>
 } operator_type_t;
 
 // 返回类型枚举
@@ -39,6 +51,7 @@ typedef enum {
     AST_MAP_ACCESS,
     AST_MEMBER_ACCESS,
     AST_BINARY_EXPR,
+    AST_UNARY_EXPR,
     AST_IDENTIFIER,
     AST_STRING_LITERAL,
     AST_INTEGER_LITERAL,
@@ -129,7 +142,7 @@ struct ast_node {
         } while_stmt;
         
         struct {
-            int type;  // CONTINUE, SKIP, or BLOCK
+            return_type_t type;
         } return_stmt;
         
         struct {
@@ -157,6 +170,11 @@ struct ast_node {
             ast_node_t* left;
             ast_node_t* right;
         } binary_expr;
+
+        struct {
+            operator_type_t op;
+            ast_node_t* operand;
+        } unary_expr;
         
         struct {
             char* name;
