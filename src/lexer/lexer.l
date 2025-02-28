@@ -101,6 +101,19 @@ void count_column(void);
 ";"            { count_column(); return ';'; }
 "$"            { count_column(); return '$'; }
 
+"++"           { count_column(); return INC; }
+"--"           { count_column(); return DEC; }
+"+="           { count_column(); return ADD_ASSIGN; }
+"-="           { count_column(); return SUB_ASSIGN; }
+"*="           { count_column(); return MUL_ASSIGN; }
+"/="           { count_column(); return DIV_ASSIGN; }
+"%="           { count_column(); return MOD_ASSIGN; }
+"&="           { count_column(); return BAND_ASSIGN; }
+"|="           { count_column(); return BOR_ASSIGN; }
+"^="           { count_column(); return BXOR_ASSIGN; }
+"<<="          { count_column(); return LSHIFT_ASSIGN; }
+">>="          { count_column(); return RSHIFT_ASSIGN; }
+
 #[^\n]*\n      { count_column(); } /* 处理单行注释 */
 .              { count_column(); return yytext[0]; } /* 返回未知字符以支持错误恢复 */
 

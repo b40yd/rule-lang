@@ -36,6 +36,8 @@ int yyparse(parser_context_t* ctx);
 %token STRING_TYPE INT_TYPE FLOAT_TYPE ARRAY_TYPE
 %token EQ NE GE LE GT LT AND OR NOT BAND BOR BXOR LSHIFT RSHIFT
 %token MATCH_KEYWORD MATCH_KEYWORD_VALUE
+%token INC DEC ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN
+%token BAND_ASSIGN BOR_ASSIGN BXOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN
 
 %type <node> program global_section namespace_section rule_declaration namespace_item
 %type <node> struct_member expression primary_expression unary_expression
@@ -47,7 +49,8 @@ int yyparse(parser_context_t* ctx);
 %type <str_val> rule_name type_spec basic_type map_type array_type
 %type <op> comparison_operator
 
-%right '='
+%right '=' ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN
+%right BAND_ASSIGN BOR_ASSIGN BXOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN
 %left OR
 %left AND
 %left BOR
@@ -59,6 +62,7 @@ int yyparse(parser_context_t* ctx);
 %left '+' '-'
 %left '*' '/' '%'
 %right UMINUS NOT
+%right INC DEC
 %left '.' '[' ']'
 %left '('
 
@@ -248,6 +252,7 @@ rule_statement
     | while_statement { $$ = $1; }
     | assignment_statement optional_semicolon { $$ = $1; }
     | function_call optional_semicolon { $$ = $1; }
+    | expression optional_semicolon { $$ = $1; }
     | error optional_semicolon { $$ = NULL; }
     ;
 
@@ -362,6 +367,100 @@ expression
         ast_node_t* node = create_ast_node(ctx, AST_MAP_ACCESS);
         node->data.map_access.target = $1;
         node->data.map_access.key = $3;
+        $$ = node;
+    }
+    | expression INC
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_UNARY_EXPR);
+        node->data.unary_expr.op = OP_INC;
+        node->data.unary_expr.operand = $1;
+        $$ = node;
+    }
+    | expression DEC
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_UNARY_EXPR);
+        node->data.unary_expr.op = OP_DEC;
+        node->data.unary_expr.operand = $1;
+        $$ = node;
+    }
+    | expression ADD_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_ADD_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression SUB_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_SUB_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression MUL_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_MUL_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression DIV_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_DIV_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression MOD_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_MOD_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression BAND_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_BAND_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression BOR_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_BOR_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression BXOR_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_BXOR_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression LSHIFT_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_LSHIFT_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
+        $$ = node;
+    }
+    | expression RSHIFT_ASSIGN expression
+    {
+        ast_node_t* node = create_ast_node(ctx, AST_BINARY_EXPR);
+        node->data.binary_expr.op = OP_RSHIFT_ASSIGN;
+        node->data.binary_expr.left = $1;
+        node->data.binary_expr.right = $3;
         $$ = node;
     }
     | expression '+' expression

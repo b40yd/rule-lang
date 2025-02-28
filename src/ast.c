@@ -4,6 +4,15 @@
 #include "pool.h"
 #include "ast.h"
 
+// 颜色代码
+#define COLOR_RESET   "\x1b[0m"
+#define COLOR_BLUE    "\x1b[34m"
+#define COLOR_GREEN   "\x1b[32m"
+#define COLOR_YELLOW  "\x1b[33m"
+#define COLOR_RED     "\x1b[31m"
+#define COLOR_MAGENTA "\x1b[35m"
+#define COLOR_CYAN    "\x1b[36m"
+
 parser_context_t* create_parser_context(void) {
     memory_pool_t* pool = create_pool(POOL_SIZE);
     if (!pool) return NULL;
@@ -151,6 +160,45 @@ ast_node_t* create_binary_expr_node(parser_context_t* ctx, operator_type_t op,
     return node;
 }
 
+// 运算符字符串表
+static const char* operator_to_string(operator_type_t op) {
+    switch (op) {
+        case OP_EQ: return "==";
+        case OP_NE: return "!=";
+        case OP_GT: return ">";
+        case OP_LT: return "<";
+        case OP_GE: return ">=";
+        case OP_LE: return "<=";
+        case OP_AND: return "&&";
+        case OP_OR: return "||";
+        case OP_MINUS: return "-";
+        case OP_ADD: return "+";
+        case OP_SUB: return "-";
+        case OP_MUL: return "*";
+        case OP_DIV: return "/";
+        case OP_MOD: return "%";
+        case OP_NOT: return "!";
+        case OP_BAND: return "&";
+        case OP_BOR: return "|";
+        case OP_BXOR: return "^";
+        case OP_LSHIFT: return "<<";
+        case OP_RSHIFT: return ">>";
+        case OP_INC: return "++";
+        case OP_DEC: return "--";
+        case OP_ADD_ASSIGN: return "+=";
+        case OP_SUB_ASSIGN: return "-=";
+        case OP_MUL_ASSIGN: return "*=";
+        case OP_DIV_ASSIGN: return "/=";
+        case OP_MOD_ASSIGN: return "%=";
+        case OP_BAND_ASSIGN: return "&=";
+        case OP_BOR_ASSIGN: return "|=";
+        case OP_BXOR_ASSIGN: return "^=";
+        case OP_LSHIFT_ASSIGN: return "<<=";
+        case OP_RSHIFT_ASSIGN: return ">>=";
+        default: return "unknown";
+    }
+}
+
 void print_ast(const ast_node_t* root, int indent) {
     if (!root) return;
     
@@ -161,7 +209,7 @@ void print_ast(const ast_node_t* root, int indent) {
     
     switch (root->type) {
         case AST_PROGRAM:
-            printf("%sProgram\n", indent_str);
+            printf("%s%s┌── Program%s\n", indent_str, COLOR_BLUE, COLOR_RESET);
             if (root->data.program.global) {
                 print_ast(root->data.program.global, indent + 1);
             }
@@ -175,7 +223,8 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
             
         case AST_GLOBAL:
-            printf("%sGlobal: %s\n", indent_str, root->data.global.name);
+            printf("%s%s├── Global: %s%s\n", indent_str, COLOR_GREEN, 
+                   root->data.global.name, COLOR_RESET);
             if (root->data.global.members) {
                 ast_list_t* member = root->data.global.members;
                 while (member) {
@@ -186,7 +235,8 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
             
         case AST_NAMESPACE:
-            printf("%sNamespace: %s\n", indent_str, root->data.namespace.name);
+            printf("%s%s├── Namespace: %s%s\n", indent_str, COLOR_YELLOW, 
+                   root->data.namespace.name, COLOR_RESET);
             if (root->data.namespace.rules) {
                 ast_list_t* rule = root->data.namespace.rules;
                 while (rule) {
@@ -197,25 +247,10 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
             
         case AST_RULE:
-            printf("%sRule: %s\n", indent_str, root->data.rule.name);
-            if (root->data.rule.after_rules) {
-                printf("%s  After Rules:\n", indent_str);
-                ast_list_t* after = root->data.rule.after_rules;
-                while (after) {
-                    print_ast(after->node, indent + 2);
-                    after = after->next;
-                }
-            }
-            if (root->data.rule.before_rules) {
-                printf("%s  Before Rules:\n", indent_str);
-                ast_list_t* before = root->data.rule.before_rules;
-                while (before) {
-                    print_ast(before->node, indent + 2);
-                    before = before->next;
-                }
-            }
+            printf("%s%s├── Rule: %s%s\n", indent_str, COLOR_MAGENTA, 
+                   root->data.rule.name, COLOR_RESET);
             if (root->data.rule.body) {
-                printf("%s  Body:\n", indent_str);
+                printf("%s  %s└── Body:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 ast_list_t* stmt = root->data.rule.body;
                 while (stmt) {
                     print_ast(stmt->node, indent + 2);
@@ -225,26 +260,28 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
 
         case AST_STRUCT_MEMBER:
-            printf("%sStruct Member: %s (type: %s)\n", indent_str, 
+            printf("%s%s├── Member: %s (type: %s)%s\n", indent_str, COLOR_GREEN,
                    root->data.struct_member.name, 
-                   root->data.struct_member.type);
+                   root->data.struct_member.type,
+                   COLOR_RESET);
             break;
             
         case AST_LET_STMT:
-            printf("%sLet: %s\n", indent_str, root->data.let_stmt.name);
+            printf("%s%s├── Let: %s%s\n", indent_str, COLOR_CYAN,
+                   root->data.let_stmt.name, COLOR_RESET);
             if (root->data.let_stmt.init) {
                 print_ast(root->data.let_stmt.init, indent + 1);
             }
             break;
             
         case AST_IF_STMT:
-            printf("%sIf\n", indent_str);
+            printf("%s%s├── If%s\n", indent_str, COLOR_YELLOW, COLOR_RESET);
             if (root->data.if_stmt.condition) {
-                printf("%s  Condition:\n", indent_str);
+                printf("%s  %s├── Condition:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 print_ast(root->data.if_stmt.condition, indent + 2);
             }
             if (root->data.if_stmt.then_body) {
-                printf("%s  Then:\n", indent_str);
+                printf("%s  %s├── Then:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 ast_list_t* stmt = root->data.if_stmt.then_body;
                 while (stmt) {
                     print_ast(stmt->node, indent + 2);
@@ -252,7 +289,7 @@ void print_ast(const ast_node_t* root, int indent) {
                 }
             }
             if (root->data.if_stmt.else_body) {
-                printf("%s  Else:\n", indent_str);
+                printf("%s  %s└── Else:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 ast_list_t* stmt = root->data.if_stmt.else_body;
                 while (stmt) {
                     print_ast(stmt->node, indent + 2);
@@ -262,13 +299,14 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
             
         case AST_FOR_STMT:
-            printf("%sFor: %s\n", indent_str, root->data.for_stmt.iterator);
+            printf("%s%s├── For: %s%s\n", indent_str, COLOR_YELLOW,
+                   root->data.for_stmt.iterator, COLOR_RESET);
             if (root->data.for_stmt.range) {
-                printf("%s  Range:\n", indent_str);
+                printf("%s  %s├── Range:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 print_ast(root->data.for_stmt.range, indent + 2);
             }
             if (root->data.for_stmt.body) {
-                printf("%s  Body:\n", indent_str);
+                printf("%s  %s└── Body:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 ast_list_t* stmt = root->data.for_stmt.body;
                 while (stmt) {
                     print_ast(stmt->node, indent + 2);
@@ -278,13 +316,13 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
             
         case AST_WHILE_STMT:
-            printf("%sWhile\n", indent_str);
+            printf("%s%s├── While%s\n", indent_str, COLOR_YELLOW, COLOR_RESET);
             if (root->data.while_stmt.condition) {
-                printf("%s  Condition:\n", indent_str);
+                printf("%s  %s├── Condition:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 print_ast(root->data.while_stmt.condition, indent + 2);
             }
             if (root->data.while_stmt.body) {
-                printf("%s  Body:\n", indent_str);
+                printf("%s  %s└── Body:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 ast_list_t* stmt = root->data.while_stmt.body;
                 while (stmt) {
                     print_ast(stmt->node, indent + 2);
@@ -294,23 +332,25 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
             
         case AST_RETURN_STMT:
-            printf("%sReturn: %s\n", indent_str, 
-                root->data.return_stmt.type == RETURN_CONTINUE ? "continue" :
-                root->data.return_stmt.type == RETURN_SKIP ? "skip" : "block");
+            printf("%s%s└── Return: %s%s\n", indent_str, COLOR_RED,
+                   root->data.return_stmt.type == RETURN_CONTINUE ? "continue" :
+                   root->data.return_stmt.type == RETURN_SKIP ? "skip" : "block",
+                   COLOR_RESET);
             break;
 
         case AST_ASSIGN_STMT:
-            printf("%sAssignment\n", indent_str);
-            printf("%s  Target:\n", indent_str);
+            printf("%s%s├── Assignment%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
+            printf("%s  %s├── Target:%s\n", indent_str, COLOR_MAGENTA, COLOR_RESET);
             print_ast(root->data.assign_stmt.target, indent + 2);
-            printf("%s  Value:\n", indent_str);
+            printf("%s  %s└── Value:%s\n", indent_str, COLOR_MAGENTA, COLOR_RESET);
             print_ast(root->data.assign_stmt.value, indent + 2);
             break;
 
         case AST_FUNC_CALL:
-            printf("%sFunction Call: %s\n", indent_str, root->data.func_call.name);
+            printf("%s%s├── Call: %s%s\n", indent_str, COLOR_BLUE,
+                   root->data.func_call.name, COLOR_RESET);
             if (root->data.func_call.args) {
-                printf("%s  Arguments:\n", indent_str);
+                printf("%s  %s└── Args:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
                 ast_list_t* arg = root->data.func_call.args;
                 while (arg) {
                     print_ast(arg->node, indent + 2);
@@ -320,49 +360,58 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
 
         case AST_MAP_ACCESS:
-            printf("%sMap Access\n", indent_str);
-            printf("%s  Target:\n", indent_str);
+            printf("%s%s├── Map Access%s\n", indent_str, COLOR_YELLOW, COLOR_RESET);
+            printf("%s  %s├── Target:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
             print_ast(root->data.map_access.target, indent + 2);
-            printf("%s  Key:\n", indent_str);
+            printf("%s  %s└── Key:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
             print_ast(root->data.map_access.key, indent + 2);
             break;
 
         case AST_MEMBER_ACCESS:
-            printf("%sMember Access: %s\n", indent_str, root->data.member_access.member);
-            printf("%s  Target:\n", indent_str);
+            printf("%s%s├── Member: %s%s\n", indent_str, COLOR_YELLOW,
+                   root->data.member_access.member, COLOR_RESET);
+            printf("%s  %s└── Target:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
             print_ast(root->data.member_access.target, indent + 2);
             break;
             
         case AST_BINARY_EXPR:
-            printf("%sBinary Expression\n", indent_str);
-            if (root->data.binary_expr.left) {
-                printf("%s  Left:\n", indent_str);
-                print_ast(root->data.binary_expr.left, indent + 2);
-            }
-            if (root->data.binary_expr.right) {
-                printf("%s  Right:\n", indent_str);
-                print_ast(root->data.binary_expr.right, indent + 2);
-            }
+            printf("%s%s├── Binary: %s%s\n", indent_str, COLOR_MAGENTA,
+                   operator_to_string(root->data.binary_expr.op), COLOR_RESET);
+            printf("%s  %s├── Left:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
+            print_ast(root->data.binary_expr.left, indent + 2);
+            printf("%s  %s└── Right:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
+            print_ast(root->data.binary_expr.right, indent + 2);
+            break;
+
+        case AST_UNARY_EXPR:
+            printf("%s%s├── Unary: %s%s\n", indent_str, COLOR_MAGENTA,
+                   operator_to_string(root->data.unary_expr.op), COLOR_RESET);
+            printf("%s  %s└── Operand:%s\n", indent_str, COLOR_CYAN, COLOR_RESET);
+            print_ast(root->data.unary_expr.operand, indent + 2);
             break;
             
         case AST_IDENTIFIER:
-            printf("%sIdentifier: %s\n", indent_str, root->data.identifier.name);
+            printf("%s%s└── ID: %s%s\n", indent_str, COLOR_GREEN,
+                   root->data.identifier.name, COLOR_RESET);
             break;
             
         case AST_STRING_LITERAL:
-            printf("%sString: %s\n", indent_str, root->data.string_literal.value);
+            printf("%s%s└── String: \"%s\"%s\n", indent_str, COLOR_GREEN,
+                   root->data.string_literal.value, COLOR_RESET);
             break;
             
         case AST_INTEGER_LITERAL:
-            printf("%sInteger: %d\n", indent_str, root->data.integer_literal.value);
+            printf("%s%s└── Int: %d%s\n", indent_str, COLOR_GREEN,
+                   root->data.integer_literal.value, COLOR_RESET);
             break;
             
         case AST_FLOAT_LITERAL:
-            printf("%sFloat: %f\n", indent_str, root->data.float_literal.value);
+            printf("%s%s└── Float: %f%s\n", indent_str, COLOR_GREEN,
+                   root->data.float_literal.value, COLOR_RESET);
             break;
             
         case AST_ARRAY_LITERAL:
-            printf("%sArray\n", indent_str);
+            printf("%s%s├── Array%s\n", indent_str, COLOR_YELLOW, COLOR_RESET);
             if (root->data.array_literal.items) {
                 ast_list_t* item = root->data.array_literal.items;
                 while (item) {
@@ -373,7 +422,8 @@ void print_ast(const ast_node_t* root, int indent) {
             break;
             
         default:
-            printf("%sUnknown Node Type: %d\n", indent_str, root->type);
+            printf("%s%s└── Unknown Node Type: %d%s\n", indent_str, COLOR_RED,
+                   root->type, COLOR_RESET);
             break;
     }
 } 

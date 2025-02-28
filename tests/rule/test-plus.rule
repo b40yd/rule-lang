@@ -1,0 +1,14 @@
+namespace test { 
+    rule test { 
+        let x = 10; 
+        x++; 
+        x--; 
+        x += 5; 
+        x -= 3; 
+        x *= 2; 
+        if (x > 0) { 
+            return skip; 
+        } 
+        return block; 
+    } 
+}

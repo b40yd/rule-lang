@@ -24,7 +24,19 @@ typedef enum {
     OP_BOR,  // |
     OP_BXOR, // ^
     OP_LSHIFT, // <<
-    OP_RSHIFT  // >>
+    OP_RSHIFT,  // >>
+    OP_INC,   // ++
+    OP_DEC,   // --
+    OP_ADD_ASSIGN, // +=
+    OP_SUB_ASSIGN, // -=
+    OP_MUL_ASSIGN, // *=
+    OP_DIV_ASSIGN, // /=
+    OP_MOD_ASSIGN, // %=
+    OP_BAND_ASSIGN, // &=
+    OP_BOR_ASSIGN,  // |=
+    OP_BXOR_ASSIGN, // ^=
+    OP_LSHIFT_ASSIGN, // <<=
+    OP_RSHIFT_ASSIGN  // >>=
 } operator_type_t;
 
 // 返回类型枚举

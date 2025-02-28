@@ -1,0 +1,18 @@
+namespace test { 
+    rule arithmetic_test { 
+        let x = 10; 
+        let y = 5; 
+        let sum = x + y; 
+        let diff = x - y; 
+        let prod = x * y; 
+        let quot = x / y; 
+        let rem = x % y; 
+        let left_shift = x << 2; 
+        let right_shift = x >> 1; 
+        let z = (x + y) * (x - y); 
+        if (z > 50) { 
+            return skip; 
+        } 
+        return continue; 
+    } 
+}
